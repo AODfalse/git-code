@@ -19,3 +19,11 @@ print(movie_ratings)
 # 访问特定电影评分
 target_movie = "肖申克的救赎"
 print(f"\n{target_movie}的评分是：{movie_ratings[target_movie]}")
+# 挑战1：计算平均评分
+ratings = list(movie_ratings.values())
+average = sum(ratings) / len(ratings)
+print(f"\n平均评分：{average:.2f}")
+
+# 挑战2：找出最高分电影
+max_movie = max(movie_ratings, key=movie_ratings.get)
+print(f"最高分电影：{max_movie} ({movie_ratings[max_movie]})")
