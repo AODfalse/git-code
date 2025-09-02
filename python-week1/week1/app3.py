@@ -3,6 +3,7 @@ import tiktoken
 import time
 import random
 import asyncio
+import re
 from datetime import datetime, timedelta
 from urllib.parse import quote, unquote
 from fastapi import FastAPI, Request, HTTPException, Depends, status
@@ -17,8 +18,9 @@ from pydantic import BaseModel
 import secrets
 from contextlib import asynccontextmanager
 import os
+
 # 配置
-TMDB_API_KEY = "your_tmdb_api_key"  # 请替换为实际的TMDB API密钥
+TMDB_API_KEY = os.getenv("TMDB_API_KEY", "048b542052a89f315fa7c6b74bd253f9")  # TMDB API密钥
 CACHE_TTL = 3600  # 缓存过期时间（秒）
 MAX_HISTORY_LENGTH = 50  # 最大历史记录长度
 API_KEY = "your_secure_api_key"  # API访问密钥
@@ -34,14 +36,15 @@ LANG_RESOURCES = {
     "zh": {
         "app_title": "AI电影顾问",
         "welcome_message": "输入您想了解的电影或类型，获取推荐和影评资源",
-        "input_placeholder": "例如：推荐科幻电影 或 头号玩家影评",
+        "input_placeholder": "例如：推荐科幻电影 或 头号玩家影评 或 科幻电影评分7.0以上",
         "submit_btn": "提交查询",
         "output_label": "推荐结果",
         "stats_label": "系统统计",
         "loading": "加载中...",
         "empty_query": "请输入您的问题",
         "no_info": "抱歉，我暂时没有这方面的信息。",
-        "try_options": "您可以尝试：\n1. 询问特定类型电影推荐（如：浪漫电影、科幻电影）\n2. 询问具体电影的影评（如：头号玩家影评）\n3. 询问电影资讯（如：最近有什么好看的电影）",
+        "no_movies_matching_criteria": "抱歉，没有找到符合条件的电影。",
+        "try_options": "您可以尝试：\n1. 询问特定类型电影推荐（如：浪漫电影、科幻电影）\n2. 询问具体电影的影评（如：头号玩家影评）\n3. 询问电影资讯（如：最近有什么好看的电影）\n4. 指定评分条件（如：科幻电影评分7.0以上）",
         "favorites": "我的收藏",
         "share": "分享",
         "history": "对话历史",
@@ -56,19 +59,21 @@ LANG_RESOURCES = {
         "please_login": "请先登录以使用此功能",
         "login_success": "登录成功",
         "invalid_credentials": "无效的凭据",
-        "page": "页"
+        "page": "页",
+        "rating_filter": "评分{min_rating}以上"
     },
     "en": {
         "app_title": "AI Movie Advisor",
         "welcome_message": "Enter movies or genres you're interested in to get recommendations and review resources",
-        "input_placeholder": "e.g.: Recommend sci-fi movies or Ready Player One reviews",
+        "input_placeholder": "e.g.: Recommend sci-fi movies or Ready Player One reviews or sci-fi movies with rating above 7.0",
         "submit_btn": "Submit Query",
         "output_label": "Recommendation Results",
         "stats_label": "System Statistics",
         "loading": "Loading...",
         "empty_query": "Please enter your question",
         "no_info": "Sorry, I don't have information about that.",
-        "try_options": "You can try:\n1. Ask for movie recommendations by genre (e.g.: romantic movies, sci-fi movies)\n2. Ask for reviews of specific movies (e.g.: Ready Player One reviews)\n3. Ask for movie information (e.g.: What are good recent movies)",
+        "no_movies_matching_criteria": "Sorry, no movies found matching your criteria.",
+        "try_options": "You can try:\n1. Ask for movie recommendations by genre (e.g.: romantic movies, sci-fi movies)\n2. Ask for reviews of specific movies (e.g.: Ready Player One reviews)\n3. Ask for movie information (e.g.: What are good recent movies)\n4. Specify rating criteria (e.g.: sci-fi movies with rating above 7.0)",
         "favorites": "My Favorites",
         "share": "Share",
         "history": "Conversation History",
@@ -83,19 +88,21 @@ LANG_RESOURCES = {
         "please_login": "Please login to use this feature",
         "login_success": "Login successful",
         "invalid_credentials": "Invalid credentials",
-        "page": "Page"
+        "page": "Page",
+        "rating_filter": "with rating above {min_rating}"
     },
     "ja": {
         "app_title": "AI映画アドバイザー",
         "welcome_message": "興味のある映画やジャンルを入力して、推薦とレビュー情報を取得してください",
-        "input_placeholder": "例：SF映画を推薦して または レディプレイヤーワンのレビュー",
+        "input_placeholder": "例：SF映画を推薦して または レディプレイヤーワンのレビュー または SF映画で評価7.0以上",
         "submit_btn": "クエリを送信",
         "output_label": "推薦結果",
         "stats_label": "システム統計",
         "loading": "読み込み中...",
         "empty_query": "質問を入力してください",
         "no_info": "申し訳ありませんが、その情報は現在提供できません。",
-        "try_options": "次のように試してみることができます：\n1. 特定のジャンルの映画推薦を求める（例：恋愛映画、SF映画）\n2. 特定の映画のレビューを求める（例：レディプレイヤーワンのレビュー）\n3. 映画情報を求める（例：最近見るべき映画は何ですか）",
+        "no_movies_matching_criteria": "申し訳ありませんが、条件に合う映画が見つかりませんでした。",
+        "try_options": "次のように試してみることができます：\n1. 特定のジャンルの映画推薦を求める（例：恋愛映画、SF映画）\n2. 特定の映画のレビューを求める（例：レディプレイヤーワンのレビュー）\n3. 映画情報を求める（例：最近見るべき映画は何ですか）\n4. 評価条件を指定する（例：SF映画で評価7.0以上）",
         "favorites": "お気に入り",
         "share": "共有",
         "history": "会話履歴",
@@ -110,7 +117,8 @@ LANG_RESOURCES = {
         "please_login": "この機能を使用するにはログインしてください",
         "login_success": "ログイン成功",
         "invalid_credentials": "無効な認証情報",
-        "page": "ページ"
+        "page": "ページ",
+        "rating_filter": "評価{min_rating}以上"
     }
 }
 
@@ -217,8 +225,6 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY", "048b542052a89f315fa7c6b74bd253f9")
 # API密钥验证
 api_key_header = APIKeyHeader(name="TMDB_API_KEY", auto_error=False)
 
-
-
 async def get_api_key(api_key: str = Depends(api_key_header)):
     if api_key == TMDB_API_KEY:
         return api_key
@@ -270,6 +276,39 @@ class MovieRecommender:
             return f"信息可能不准确，请谨慎参考：{response}"
         else:
             return response
+    
+    def extract_rating_filter(self, prompt: str) -> Optional[float]:
+        """从用户查询中提取评分筛选条件"""
+        # 匹配中文表达（如：评分7.0以上、评分大于7、7分以上）
+        chinese_patterns = [
+            r'评分(\d+(?:\.\d+)?)以上',
+            r'评分大于(\d+(?:\.\d+)?)',
+            r'(\d+(?:\.\d+)?)分以上'
+        ]
+        
+        # 匹配英文表达（如：rating above 7.0, rating > 7, 7+ rating）
+        english_patterns = [
+            r'rating above (\d+(?:\.\d+)?)',
+            r'rating > (\d+(?:\.\d+)?)',
+            r'(\d+(?:\.\d+)?)\+ rating'
+        ]
+        
+        # 匹配日文表达（如：評価7.0以上、7点以上）
+        japanese_patterns = [
+            r'評価(\d+(?:\.\d+)?)以上',
+            r'(\d+(?:\.\d+)?)点以上'
+        ]
+        
+        # 尝试所有模式
+        for pattern in chinese_patterns + english_patterns + japanese_patterns:
+            match = re.search(pattern, prompt)
+            if match:
+                try:
+                    return float(match.group(1))
+                except ValueError:
+                    continue
+                    
+        return None
     
     @lru_cache(maxsize=100)
     def get_review_sources(self, movie_title: str, movie_id: int, lang: str = DEFAULT_LANGUAGE) -> str:
@@ -347,7 +386,7 @@ class MovieRecommender:
         """获取热门电影"""
         params = {"page": page, "language": lang}
         if genre:
-            # 这里需要TMDB的 genre ID映射
+            # TMDB的 genre ID映射
             genre_ids = {
                 "动作": 28, "冒险": 12, "动画": 16, "喜剧": 35, "犯罪": 80,
                 "纪录片": 99, "剧情": 18, "家庭": 10751, "奇幻": 14, "历史": 36,
@@ -392,6 +431,9 @@ class MovieRecommender:
                 self.interaction_count += 1
                 return (response, 1, 1)
         
+        # 提取评分筛选条件
+        min_rating = self.extract_rating_filter(prompt)
+        
         # 检查是否询问类型推荐
         genre_keywords = {
             "浪漫": ["浪漫", "爱情", "情侣", "恋爱", "romance", "love", "恋愛", "ロマンス"],
@@ -412,27 +454,66 @@ class MovieRecommender:
             
             # 尝试从TMDB获取流行电影
             tmdb_movies = None
+            all_filtered_movies = []  # 存储所有符合条件的电影
+            
             for genre in matched_genres:
-                response += f"{self.get_lang_text('genre_movies', lang, genre=genre)}\n"
+                # 添加类型和可能的评分筛选条件说明
+                genre_label = self.get_lang_text("genre_movies", lang, genre=genre)
+                if min_rating:
+                    rating_label = self.get_lang_text("rating_filter", lang, min_rating=min_rating)
+                    response += f"{genre_label} {rating_label}\n"
+                else:
+                    response += f"{genre_label}\n"
                 
                 # 先尝试从TMDB获取
                 tmdb_lang = "zh-CN" if lang == "zh" else "en-US" if lang == "en" else "ja-JP"
                 tmdb_movies = await self.get_popular_movies(genre, page, tmdb_lang)
                 
                 if tmdb_movies and tmdb_movies.get("results"):
-                    movies = tmdb_movies["results"]
-                    total_pages = tmdb_movies.get("total_pages", 1)
+                    # 筛选出符合评分条件的电影
+                    filtered_movies = []
+                    for movie in tmdb_movies["results"]:
+                        # TMDB评分是10分制
+                        if min_rating is None or (movie.get("vote_average") and movie["vote_average"] >= min_rating):
+                            filtered_movies.append(movie)
                     
-                    for i, movie in enumerate(movies[:items_per_page]):
+                    # 保存所有筛选后的电影用于分页
+                    all_filtered_movies.extend(filtered_movies)
+                    
+                    # 处理分页
+                    start_idx = (page - 1) * items_per_page
+                    end_idx = start_idx + items_per_page
+                    paginated_movies = filtered_movies[start_idx:end_idx]
+                    
+                    # 计算总页数
+                    total_pages = max(1, (len(filtered_movies) + items_per_page - 1) // items_per_page)
+                    
+                    # 添加电影到响应
+                    for i, movie in enumerate(paginated_movies):
                         title = movie.get("title", movie.get("original_title", "未知电影"))
                         rating = movie.get("vote_average", "N/A")
-                        response += f"{(page-1)*items_per_page + i + 1}. 《{title}》- 评分{rating}\n"
+                        # 格式化评分，保留一位小数
+                        if isinstance(rating, float):
+                            rating = f"{rating:.1f}"
+                        response += f"{start_idx + i + 1}. 《{title}》- 评分{rating}\n"
+                        
+                    # 如果没有符合条件的电影
+                    if not filtered_movies:
+                        response += self.get_lang_text("no_movies_matching_criteria", lang) + "\n"
                 else:
                     # TMDB获取失败，使用本地数据库
                     movies_in_genre = [
                         (title, info) for title, info in movie_database.items() 
                         if info["genre"] == genre
                     ]
+                    
+                    # 应用评分筛选
+                    if min_rating is not None:
+                        movies_in_genre = [
+                            (title, info) for title, info in movies_in_genre
+                            if info["rating"] >= min_rating
+                        ]
+                    
                     # 按评分排序
                     movies_in_genre.sort(key=lambda x: x[1]["rating"], reverse=True)
                     
@@ -442,19 +523,26 @@ class MovieRecommender:
                     paginated_movies = movies_in_genre[start_idx:end_idx]
                     total_pages = max(1, (len(movies_in_genre) + items_per_page - 1) // items_per_page)
                     
+                    # 添加电影到响应
                     for i, (title, info) in enumerate(paginated_movies):
                         response += f"{start_idx + i + 1}. 《{title}》- 评分{info['rating']}\n"
+                        
+                    # 如果没有符合条件的电影
+                    if not movies_in_genre:
+                        response += self.get_lang_text("no_movies_matching_criteria", lang) + "\n"
                 
                 response += "\n"
             
             response += self.get_lang_text("try_options", lang)
             
             # 添加分页信息
-            if tmdb_movies:
-                total_pages = tmdb_movies.get("total_pages", 1)
-            else:
+            if tmdb_movies and all_filtered_movies:
+                total_pages = max(1, (len(all_filtered_movies) + items_per_page - 1) // items_per_page)
+            elif not tmdb_movies:
                 total_movies = sum(len([t for t, i in movie_database.items() if i["genre"] == g]) for g in matched_genres)
                 total_pages = max(1, (total_movies + items_per_page - 1) // items_per_page)
+            else:
+                total_pages = 1
                 
             if total_pages > 1:
                 response += f"\n{self.get_lang_text('page', lang)} {page}/{total_pages} | {self.get_lang_text('load_more', lang)}"
@@ -592,7 +680,8 @@ with gr.Blocks(title=recommender.get_lang_text("app_title"), theme=gr.themes.Sof
                     ["推荐科幻电影"],
                     ["头号玩家影评"],
                     ["最近有什么好看的浪漫电影"],
-                    ["王家卫导演最好的作品"]
+                    ["王家卫导演最好的作品"],
+                    ["科幻电影评分7.0以上"]  # 新增示例
                 ],
                 inputs=query_input
             )
@@ -760,7 +849,6 @@ with gr.Blocks(title=recommender.get_lang_text("app_title"), theme=gr.themes.Sof
             return recommender.get_lang_text("please_login", lang)
             
         # 尝试从输出中提取电影名称
-        # 这是一个简单的实现，实际应用中可能需要更复杂的解析
         output_text = output.value
         if not output_text:
             return "没有可收藏的电影"
@@ -812,7 +900,7 @@ with gr.Blocks(title=recommender.get_lang_text("app_title"), theme=gr.themes.Sof
         outputs=[output]
     )
     
-    # 历史记录 - 修复部分
+    # 历史记录
     async def toggle_history(token, visible_state, lang):
         user = await get_current_user(token)
         new_visible = not visible_state
