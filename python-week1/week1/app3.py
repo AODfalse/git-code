@@ -978,8 +978,44 @@ async def api_login(request: LoginRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 # 将Gradio应用挂载到FastAPI
+# app = gr.mount_gradio_app(app, demo, path="/")
+
+# if __name__ == "__main__":
+#       uvicorn.run(app, host="127.0.0.1", port=7860)
+
+# if __name__ == "__main__":
+#     demo.launch(server_name="127.0.0.1", server_port=7860, share=True)
+# 其他导入和代码保持不变...
+
+# 其他导入和代码保持不变...
+
+# 其他导入和代码保持不变...
+
+# # 创建Gradio界面
+
+
+# 将Gradio应用挂载到FastAPI
 app = gr.mount_gradio_app(app, demo, path="/")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=7860)
+    import threading
+    import uvicorn
+    
+    # 启动FastAPI服务器的函数
+    def run_fastapi():
+        uvicorn.run(app, host="127.0.0.1", port=7860)
+    
+    # 在单独线程中启动FastAPI
+    fastapi_thread = threading.Thread(target=run_fastapi, daemon=True)
+    fastapi_thread.start()
+    
+    # 启动Gradio并启用分享功能（不传递app参数）
+    demo.launch(
+        server_name="127.0.0.1", 
+        server_port=7861,  # 使用不同端口避免冲突
+        share=True
+    )
+
+
+
     
