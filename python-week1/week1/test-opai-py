@@ -1,0 +1,34 @@
+from autogen import AssistantAgent, UserProxyAgent
+import os
+
+# 从环境变量获取 API Key，确保已设置 DEEPSEEK_API_KEY
+api_key = os.getenv("DEEPSEEK_API_KEY") 
+
+# 正确的 LLM 配置
+config_list = [
+    {
+        "model": "deepseek-chat",  # 例如 "deepseek-chat", "deepseek-reasoner"
+        "api_key": api_key,
+        "base_url": "https://api.deepseek.com",  # DeepSeek API 的端点
+        "api_type": "openai"  # 关键修正：使用 'openai' 而不是 'open_ai'
+    }
+]
+
+# 创建助理代理
+assistant = AssistantAgent(
+    name="assistant",
+    llm_config={"config_list": config_list}
+)
+
+# 创建用户代理
+user_proxy = UserProxyAgent(
+    name="user_proxy",
+    human_input_mode="NEVER",
+    code_execution_config={"work_dir": "coding"}
+)
+
+# 开始对话
+user_proxy.initiate_chat(
+    assistant,
+    message="你好，请帮我分析一下特斯拉近期的股价表现。"
+)
