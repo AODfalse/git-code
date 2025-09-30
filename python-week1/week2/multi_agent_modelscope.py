@@ -17,11 +17,7 @@ load_dotenv()
 try:
     llm = ChatOpenAI(
         model="deepseek-chat",
-<<<<<<< HEAD
         openai_api_key=os.getenv("DEEPSEEK_API_KEY"),
-=======
-        openai_api_key=os.getenv("DEEPSEEK_API_KEY", "sk-8e6cab5152e5434d840afa871153bf56"),
->>>>>>> 6e5e589f394b2b03a2ffc9ad836f67a928b834e2
         openai_api_base="https://api.deepseek.com/v1"  # DeepSeek API端点
     )
     logger.info("DeepSeek LLM初始化成功")
