@@ -12,7 +12,7 @@ load_dotenv()
 # 配置DeepSeek API
 llm = ChatOpenAI(
     model="deepseek-chat",
-    openai_api_key="sk-8e6cab5152e5434d840afa871153bf56",  # 替换为您的实际API密钥
+    openai_api_key=os.getenv("DEEPSEEK_API_KEY"),
     openai_api_base="https://api.deepseek.com/v1"  # DeepSeek API端点
 )
 

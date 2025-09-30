@@ -13,7 +13,7 @@ load_dotenv()
 # 配置DeepSeek模型
 def get_llm():
     """获取配置好的LLM实例"""
-    api_key = os.getenv("DEEPSEEK_API_KEY", "sk-8e6cab5152e5434d840afa871153bf56")
+    api_key = os.getenv("DEEPSEEK_API_KEY")
     
     if not api_key or api_key.strip() == "":
         raise ValueError("请设置有效的DEEPSEEK_API_KEY环境变量")
